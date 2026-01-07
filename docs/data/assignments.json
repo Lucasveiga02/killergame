@@ -29,7 +29,7 @@
   },
   "Jumelles": {
     "target": "Maëva",
-    "mission": "Bonjour agents Jumelles.\n\nVotre mission, si vous l’acceptez, sera de trouver Maëva et de faire un TikTok avec elle.\n\nCe message s’autodétruira dans 10 secondes."
+    "mission": "Bonjour à vous les Jumelles.\n\nVotre mission, si vous l’acceptez, sera de trouver Maëva et de faire un TikTok avec elle.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Maëva": {
     "target": "Hugues",
