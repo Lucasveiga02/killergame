@@ -41,7 +41,15 @@ function clearAlert() {
   el.classList.add("hidden");
 }
 
+function stopCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = null;
+}
+
 function showView(viewId) {
+  // ✅ Timer uniquement sur l'écran mission
+  if (viewId !== "viewMission") stopCountdown();
+
   const views = ["viewHome", "viewMission", "viewGuess", "viewAdmin"];
   for (const v of views) {
     const el = $(v);
@@ -122,10 +130,8 @@ function resolvePlayerDisplay(inputText) {
   const raw = (inputText || "").trim();
   if (!raw) return null;
 
-  // exact match (best)
   if (playersIndex.byDisplay.has(raw)) return playersIndex.byDisplay.get(raw);
 
-  // accent-insensitive exact match
   const n = normalize(raw);
   const candidates = playersIndex.list.filter(p => normalize(p.display) === n);
   if (candidates.length === 1) return candidates[0];
@@ -136,11 +142,6 @@ function resolvePlayerDisplay(inputText) {
 /***********************
  * COUNTDOWN (MISSION ONLY)
  ***********************/
-function stopCountdown() {
-  if (countdownTimer) clearInterval(countdownTimer);
-  countdownTimer = null;
-}
-
 function startCountdown(seconds = MISSION_TIMEOUT_SEC) {
   stopCountdown();
   countdownRemaining = seconds;
@@ -163,7 +164,6 @@ function logoutToHome() {
   stopCountdown();
   session = { player: null, mission: null, target: null, missionDone: false };
 
-  // clear fields safely
   if ($("inputName")) $("inputName").value = "";
   if ($("killerInput")) $("killerInput").value = "";
   if ($("guessMission")) $("guessMission").value = "";
@@ -182,9 +182,7 @@ function logoutToHome() {
 async function loginAndFetchMission(displayName) {
   clearAlert();
 
-  if (!playersIndex.list.length) {
-    await loadPlayers();
-  }
+  if (!playersIndex.list.length) await loadPlayers();
 
   const player = resolvePlayerDisplay(displayName);
   if (!player) {
@@ -205,7 +203,7 @@ async function loginAndFetchMission(displayName) {
 
   renderMissionScreen();
   showView("viewMission");
-  startCountdown(MISSION_TIMEOUT_SEC); // ✅ timer ONLY on mission
+  startCountdown(MISSION_TIMEOUT_SEC);
 }
 
 function renderMissionScreen() {
@@ -219,7 +217,6 @@ function renderMissionScreen() {
       : "Statut : mission non déclarée (pour l’instant).";
   }
 
-  // admin box visible only for Lucas
   const isAdmin = session.player && session.player.display === ADMIN_NAME;
   const adminBox = $("adminBox");
   if (adminBox) adminBox.classList.toggle("hidden", !isAdmin);
@@ -253,20 +250,17 @@ async function markMissionDone() {
 }
 
 /***********************
- * GUESS FLOW (NO TIMER)
+ * GUESS FLOW
  ***********************/
 function goToGuess() {
   clearAlert();
-  stopCountdown(); // ✅ stop timer when leaving mission
-
   if (!session.player) {
     showAlert("Tu dois d’abord te connecter pour faire un guess.");
     showView("viewHome");
     return;
   }
-
   if ($("guessStatus")) $("guessStatus").textContent = "";
-  showView("viewGuess");
+  showView("viewGuess"); // stopCountdown auto via showView
 }
 
 async function submitGuess() {
@@ -289,7 +283,6 @@ async function submitGuess() {
     return;
   }
 
-  // prevent self accusation
   if (accused.id === session.player.id) {
     showAlert("Tu ne peux pas t’accuser toi-même 😉");
     return;
@@ -313,12 +306,10 @@ async function submitGuess() {
 }
 
 /***********************
- * ADMIN (NO TIMER)
+ * ADMIN (Lucas + password)
  ***********************/
 async function unlockAdmin() {
   clearAlert();
-  stopCountdown(); // ✅ stop timer when leaving mission
-
   if (!session.player || session.player.display !== ADMIN_NAME) {
     showAlert("Accès refusé.");
     return;
@@ -331,7 +322,7 @@ async function unlockAdmin() {
   }
 
   if ($("adminStatus")) $("adminStatus").textContent = "Accès autorisé ✅";
-  showView("viewAdmin");
+  showView("viewAdmin"); // stopCountdown auto via showView
   await refreshAdmin();
 }
 
@@ -365,14 +356,31 @@ async function refreshAdmin() {
   `).join("");
 }
 
+async function resetStateFromAdmin() {
+  clearAlert();
+  const ok = confirm("⚠️ Reset état du jeu ? (missions_done/guesses/points seront remis à zéro)");
+  if (!ok) return;
+
+  try {
+    const resp = await apiPost("/api/admin/reset", { password: ADMIN_PASSWORD });
+    if (resp?.ok === false) {
+      showAlert(resp?.error || "Reset impossible.");
+      return;
+    }
+    showAlert("État reset ✅");
+    await refreshAdmin();
+  } catch (err) {
+    console.error(err);
+    showAlert("Erreur reset (API).");
+  }
+}
+
 /***********************
  * WIRING
  ***********************/
 function wireEvents() {
-  // header home
   $("btnHomeHeader")?.addEventListener("click", logoutToHome);
 
-  // HOME
   $("formLogin")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -383,7 +391,6 @@ function wireEvents() {
     }
   });
 
-  // MISSION
   $("btnMissionDone")?.addEventListener("click", async () => {
     try { await markMissionDone(); }
     catch (err) { console.error(err); showAlert("Erreur API."); }
@@ -396,13 +403,11 @@ function wireEvents() {
 
   $("btnHomeMission")?.addEventListener("click", logoutToHome);
 
-  // ADMIN (on mission screen)
   $("btnAdminUnlock")?.addEventListener("click", async () => {
     try { await unlockAdmin(); }
     catch (err) { console.error(err); showAlert("Erreur admin / API."); }
   });
 
-  // GUESS
   $("btnHomeGuess")?.addEventListener("click", logoutToHome);
 
   $("formGuess")?.addEventListener("submit", async (e) => {
@@ -411,13 +416,18 @@ function wireEvents() {
     catch (err) { console.error(err); showAlert("Erreur API."); }
   });
 
-  // ADMIN VIEW
   $("btnHomeAdmin")?.addEventListener("click", logoutToHome);
 
   $("btnRefreshAdmin")?.addEventListener("click", async () => {
     try { await refreshAdmin(); }
     catch (err) { console.error(err); showAlert("Erreur API."); }
   });
+
+  $("btnResetState")?.addEventListener("click", resetStateFromAdmin);
+
+  // BONUS: si tu veux éviter de te faire logout pendant que tu tapes le mdp admin sur l'écran mission
+  $("adminPass")?.addEventListener("focus", stopCountdown);
+  $("adminPass")?.addEventListener("input", stopCountdown);
 }
 
 /***********************
