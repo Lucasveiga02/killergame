@@ -76,7 +76,7 @@
     "mission": "Bonjour agent Mathis.\n\nVotre mission, si vous l’acceptez, sera de passer les menottes à Stéphane et de le livrer à Sylvie sans contexte.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Sylvie": {
-    "target": "Quelqu’un",
+    "target": "Steph",
     "mission": "Bonjour agent Sylvie.\n\nVotre mission, si vous l’acceptez, sera d’attendre qu’on vous livre quelqu’un et de lui faire passer un éthylotest.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Stéphane": {
@@ -192,7 +192,7 @@
     "mission": "Bonjour agent Cécile.\n\nVotre mission, si vous l’acceptez, sera de faire des grimaces à Lou plusieurs fois dans la soirée sans raison.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Lou": {
-    "target": "Quelqu’un",
+    "target": "",
     "mission": "Bonjour agent Lou.\n\nVotre mission, si vous l’acceptez, sera de faire un slow imaginaire avec quelqu’un pendant 15 secondes.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Aida": {
