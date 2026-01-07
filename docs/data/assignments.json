@@ -96,7 +96,7 @@
     "mission": "Bonjour agent Alex.\n\nVotre mission, si vous l’acceptez, sera d’annoncer à Nellie que vous partez vivre en Inde.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Nellie": {
-    "target": "Léa L",
+    "target": "Léa Latouche",
     "mission": "Bonjour agent Nellie.\n\nVotre mission, si vous l’acceptez, sera de piquer le verre de Léa L une bonne partie de la soirée sans vous faire prendre.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Léa L": {
@@ -180,7 +180,7 @@
     "mission": "Bonjour agent Enzo.\n\nVotre mission, si vous l’acceptez, sera de critiquer les kinés auprès de Maelann.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Maelann": {
-    "target": "Léa G",
+    "target": "Léa Gaussot",
     "mission": "Bonjour agent Maelann.\n\nVotre mission, si vous l’acceptez, sera de faire deviner à Léa G le mot « Tour Eiffel » en mimant.\n\nCe message s’autodétruira dans 10 secondes."
   },
   "Léa G": {
