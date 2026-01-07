@@ -145,12 +145,11 @@ p {
    BUTTONS
 ========================= */
 
-.btn {
-  padding: 14px;
-  border-radius: 14px;
-  font-weight: 1500;
-  cursor: pointer;
-  border: 1px solid transparent;
+.btn-gold {
+  font-size: 1.1rem;          /* plus lisible */
+  padding: 14px 18px;         /* bouton plus “plein” */
+  font-weight: 700;
+  letter-spacing: 0.4px;
 }
 
 .btn-gold {
@@ -284,4 +283,25 @@ p {
 
 .autocomplete-item:hover {
   background: rgba(212,175,55,0.15);
+}
+
+.autocomplete-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* liste des suggestions */
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 4px);   /* collée juste sous l’input */
+  left: 0;
+  width: 100%;             /* EXACTEMENT la même largeur */
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 20;
+
+  background: #0b0b0b;
+  border: 1px solid #c9a24d; /* or */
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
 }
