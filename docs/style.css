@@ -145,12 +145,15 @@ p {
    BUTTONS
 ========================= */
 
-.btn-gold {
-  font-size: 1.1rem;          /* plus lisible */
-  padding: 14px 18px;         /* bouton plus “plein” */
-  font-weight: 700;
-  letter-spacing: 0.4px;
+.btn {
+  padding: 14px;
+  border-radius: 14px;
+  font-weight: 900;
+  font-size: 1.1rem; /* ← AJOUT UNIQUEMENT */
+  cursor: pointer;
+  border: 1px solid transparent;
 }
+
 
 .btn-gold {
   background: linear-gradient(135deg, #d4af37, #f5d76e);
