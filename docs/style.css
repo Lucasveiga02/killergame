@@ -151,7 +151,6 @@ p {
   font-weight: 900;
   font-size: 1.1rem; /* ← AJOUT UNIQUEMENT */
   cursor: pointer;
-  border: 1px solid transparent;
 }
 
 
