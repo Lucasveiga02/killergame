@@ -288,9 +288,8 @@ async function submitGuess() {
   $("guessStatus").textContent = "Envoi du guess…";
 
   const resp = await apiPost("/api/guess", {
-    player_id: session.player.id || null,
-    accused_killer_id: accused.id || null,
-    accused_killer_display: accused.display, // fallback if backend uses display
+    player_id: session.player.id,
+    accused_killer_id: accused.id,
     guessed_mission: guessedMission,
   });
 
@@ -316,10 +315,7 @@ async function markMissionDone() {
 
   $("missionStatus").textContent = "Enregistrement…";
 
-  const resp = await apiPost("/api/mission_done", {
-    player_id: session.player.id || null,
-    player_display: session.player.display,
-  });
+  const resp = await apiPost("/api/mission_done", { player_id: session.player.id });
 
   if (resp?.ok === false) {
     showAlert(resp?.error || "Erreur lors de la validation.");
