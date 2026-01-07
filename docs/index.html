@@ -1,247 +1,448 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Killer Game</title>
-  <link rel="stylesheet" href="./style.css?v=gold" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="dot"></div>
-      <div>
-        <div class="brand-title">Killer Game</div>
-        <div class="brand-sub">Tablette / Soirée</div>
-      </div>
-    </div>
+/***********************
+ * CONFIG
+ ***********************/
+const API_BASE = "https://killergame-pauline25.onrender.com";
+const ADMIN_NAME = "Lucas";
+const ADMIN_PASSWORD = "Veiga";
+const MISSION_TIMEOUT_SEC = 10;
 
-    <button id="btnHomeHeader" class="btn btn-ghost" type="button">
-      Retour à l’accueil
-    </button>
-  </header>
+/***********************
+ * STATE
+ ***********************/
+let session = {
+  player: null,      // {id, display}
+  mission: null,     // {text}
+  target: null,      // {display}
+  missionDone: false,
+};
 
-  <main class="container">
-    <!-- GLOBAL ALERT -->
-    <div id="globalAlert" class="alert hidden" role="alert"></div>
+let playersIndex = {
+  list: [],            // [{id, display}, ...]
+  byDisplay: new Map() // display -> player
+};
 
-    <!-- VIEW: HOME -->
-    <section id="viewHome" class="view">
-      <div class="grid1">
-        <div class="card">
-          <h1>Récupérer ma mission</h1>
-          <p class="muted">
-            Entre ton prénom, récupère ta mission, et attention au timer.
-          </p>
+let countdownTimer = null;
+let countdownRemaining = MISSION_TIMEOUT_SEC;
 
-          <!-- champ "piège" pour réduire l'autofill navigateur -->
-          <input type="text" name="fakeusernameremembered" style="display:none" autocomplete="username">
+/***********************
+ * DOM HELPERS
+ ***********************/
+const $ = (id) => document.getElementById(id);
 
-          <form id="formLogin" class="stack" autocomplete="off">
-            <label class="label" for="inputName">Prénom</label>
-            <input
-              id="inputName"
-              class="input"
-              type="text"
-              list="playersDatalist"
-              placeholder="Tape pour filtrer…"
-              autocomplete="off"
-              autocapitalize="none"
-              autocorrect="off"
-              spellcheck="false"
-              required
-            />
+function showAlert(msg) {
+  const el = $("globalAlert");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
 
-            <div class="hint">
-              Choisis un nom proposé (liste déroulante) pour éviter les erreurs.
-            </div>
+function clearAlert() {
+  const el = $("globalAlert");
+  el.textContent = "";
+  el.classList.add("hidden");
+}
 
-            <button class="btn btn-primary" type="submit">
-              Récupérer ma mission
-            </button>
+function stopCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = null;
+}
 
-            <div class="hint">
-              Astuce : tu peux taper sans accents (ex: “Theo”).
-            </div>
-          </form>
+function showView(viewId) {
+  // ✅ Timer uniquement sur l'écran mission
+  if (viewId !== "viewMission") stopCountdown();
 
-          <div class="info">
-            L’écran mission se ferme automatiquement après 10 secondes.
-          </div>
-        </div>
-      </div>
-    </section>
+  const views = ["viewHome", "viewMission", "viewGuess", "viewAdmin"];
+  for (const v of views) {
+    const el = $(v);
+    if (el) el.classList.toggle("hidden", v !== viewId);
+  }
+  clearAlert();
+}
 
-    <!-- VIEW: MISSION -->
-    <section id="viewMission" class="view hidden">
-      <div class="card">
-        <div class="row space-between">
-          <div>
-            <h2>Ta mission</h2>
-            <div id="whoami" class="chip"></div>
-          </div>
+function normalize(s) {
+  return (s || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/\s+/g, " ");
+}
 
-          <div class="timer">
-            <div class="timer-label">Retour accueil dans</div>
-            <div id="countdown" class="timer-value">10</div>
-          </div>
-        </div>
+/***********************
+ * API HELPERS
+ ***********************/
+async function safeText(res) {
+  try { return await res.text(); } catch { return ""; }
+}
 
-        <div class="mission-box">
-          <div class="mission-label">Mission</div>
-          <div id="missionText" class="mission-text">—</div>
-        </div>
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE}${path}`, { method: "GET" });
+  if (!res.ok) {
+    const txt = await safeText(res);
+    throw new Error(`GET ${path} failed (${res.status}): ${txt}`);
+  }
+  return res.json();
+}
 
-        <div class="mission-box">
-          <div class="mission-label">Cible</div>
-          <div id="targetText" class="mission-text">—</div>
-        </div>
+async function apiPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  if (!res.ok) {
+    const txt = await safeText(res);
+    throw new Error(`POST ${path} failed (${res.status}): ${txt}`);
+  }
+  return res.json();
+}
 
-        <!-- ADMIN (visible only for Lucas) -->
-        <div id="adminBox" class="admin hidden">
-          <div class="admin-title">Admin (Lucas)</div>
+/***********************
+ * PLAYERS (DATALIST)
+ ***********************/
+function escapeHtml(s) {
+  return (s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-          <div class="stack">
-            <label class="label" for="adminPass">Mot de passe</label>
-            <input
-              id="adminPass"
-              class="input"
-              type="password"
-              placeholder="Entrez le mot de passe"
-              autocomplete="off"
-              autocapitalize="none"
-              autocorrect="off"
-              spellcheck="false"
-            />
+async function loadPlayers() {
+  const data = await apiGet("/api/players");
+  playersIndex.list = Array.isArray(data) ? data : [];
+  playersIndex.byDisplay = new Map();
 
-            <button id="btnAdminUnlock" class="btn btn-gold" type="button">
-              Accéder au tableau des résultats
-            </button>
+  for (const p of playersIndex.list) {
+    if (p && p.display) playersIndex.byDisplay.set(p.display, p);
+  }
 
-            <div id="adminStatus" class="status muted"></div>
-          </div>
-        </div>
+  const dl = $("playersDatalist");
+  if (!dl) throw new Error("Missing <datalist id='playersDatalist'> in index.html");
 
-        <div class="actions">
-          <button id="btnMissionDone" class="btn btn-primary" type="button">
-            J’ai effectué ma mission
-          </button>
+  dl.innerHTML = playersIndex.list
+    .map(p => `<option value="${escapeHtml(p.display)}"></option>`)
+    .join("");
+}
 
-          <button id="btnGoGuessFromMission" class="btn btn-secondary" type="button">
-            J’ai trouvé la mission dont j’étais la cible
-          </button>
+function resolvePlayerDisplay(inputText) {
+  const raw = (inputText || "").trim();
+  if (!raw) return null;
 
-          <button id="btnHomeMission" class="btn btn-ghost" type="button">
-            Retour à l’accueil
-          </button>
-        </div>
+  if (playersIndex.byDisplay.has(raw)) return playersIndex.byDisplay.get(raw);
 
-        <div id="missionStatus" class="status muted"></div>
-      </div>
-    </section>
+  const n = normalize(raw);
+  const candidates = playersIndex.list.filter(p => normalize(p.display) === n);
+  if (candidates.length === 1) return candidates[0];
 
-    <!-- VIEW: GUESS -->
-    <section id="viewGuess" class="view hidden">
-      <div class="card">
-        <div class="row space-between">
-          <div>
-            <h2>J’ai trouvé la mission dont j’étais la cible</h2>
-            <div class="muted">
-              Accuse un killer + décris la mission qu’il a faite contre toi.
-            </div>
-          </div>
+  return null;
+}
 
-          <button id="btnHomeGuess" class="btn btn-ghost" type="button">
-            Retour à l’accueil
-          </button>
-        </div>
+/***********************
+ * COUNTDOWN (MISSION ONLY)
+ ***********************/
+function startCountdown(seconds = MISSION_TIMEOUT_SEC) {
+  stopCountdown();
+  countdownRemaining = seconds;
+  const el = $("countdown");
+  if (el) el.textContent = String(countdownRemaining);
 
-        <form id="formGuess" class="stack" autocomplete="off">
-          <label class="label" for="killerInput">Prénom du killer</label>
-          <input
-            id="killerInput"
-            class="input"
-            type="text"
-            list="playersDatalist"
-            placeholder="Tape pour filtrer…"
-            autocomplete="off"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            required
-          />
+  countdownTimer = setInterval(() => {
+    countdownRemaining -= 1;
+    if (el) el.textContent = String(Math.max(0, countdownRemaining));
+    if (countdownRemaining <= 0) {
+      logoutToHome();
+    }
+  }, 1000);
+}
 
-          <div class="hint">
-            Choisis un nom proposé (liste déroulante) pour éviter les erreurs.
-          </div>
+/***********************
+ * NAV / SESSION
+ ***********************/
+function logoutToHome() {
+  stopCountdown();
+  session = { player: null, mission: null, target: null, missionDone: false };
 
-          <label class="label" for="guessMission">Mission devinée</label>
-          <textarea
-            id="guessMission"
-            class="textarea"
-            rows="4"
-            placeholder="Décris la mission que tu penses avoir subie…"
-            required
-          ></textarea>
+  if ($("inputName")) $("inputName").value = "";
+  if ($("killerInput")) $("killerInput").value = "";
+  if ($("guessMission")) $("guessMission").value = "";
 
-          <button class="btn btn-primary" type="submit">
-            Valider mon guess
-          </button>
+  if ($("guessStatus")) $("guessStatus").textContent = "";
+  if ($("missionStatus")) $("missionStatus").textContent = "";
+  if ($("adminStatus")) $("adminStatus").textContent = "";
+  if ($("adminPass")) $("adminPass").value = "";
 
-          <div id="guessStatus" class="status muted"></div>
-        </form>
-      </div>
-    </section>
+  showView("viewHome");
+}
 
-    <!-- VIEW: ADMIN -->
-    <section id="viewAdmin" class="view hidden">
-      <div class="card">
-        <div class="row space-between">
-          <div>
-            <h2>Classement</h2>
-            <div class="muted">Visible uniquement depuis le profil Lucas.</div>
-          </div>
+/***********************
+ * MISSION FLOW
+ ***********************/
+async function loginAndFetchMission(displayName) {
+  clearAlert();
 
-          <button id="btnHomeAdmin" class="btn btn-ghost" type="button">
-            Retour à l’accueil
-          </button>
-        </div>
+  if (!playersIndex.list.length) await loadPlayers();
 
-        <div class="row gap">
-          <button id="btnRefreshAdmin" class="btn btn-secondary" type="button">
-            Rafraîchir
-          </button>
-        </div>
+  const player = resolvePlayerDisplay(displayName);
+  if (!player) {
+    showAlert("Choisis un nom valide dans la liste déroulante (pas de saisie approximative).");
+    return;
+  }
 
-        <div class="tablewrap">
-          <table class="table" id="adminTable">
-            <thead>
-              <tr>
-                <th>Joueur</th>
-                <th>Points</th>
-                <th>Mission réalisée</th>
-                <th>Découvert par la cible</th>
-                <th>A trouvé son killer</th>
-                <th>Guess killer</th>
-                <th>Guess mission</th>
-              </tr>
-            </thead>
-            <tbody id="adminTbody">
-              <tr><td colspan="7" class="muted">Chargement…</td></tr>
-            </tbody>
-          </table>
-        </div>
+  const payload = await apiGet(`/api/mission?player=${encodeURIComponent(player.display)}`);
+  if (!payload || payload.ok === false) {
+    showAlert(payload?.error || "Impossible de récupérer la mission.");
+    return;
+  }
 
-        <div class="hint">
-          Note : le calcul exact des points vient du backend. Le frontend affiche.
-        </div>
-      </div>
-    </section>
-  </main>
+  session.player = payload.player || player;
+  session.mission = payload.mission || { text: "—" };
+  session.target = payload.target || { display: "—" };
+  session.missionDone = !!payload.mission_done;
 
-  <script src="./app.js"></script>
+  renderMissionScreen();
+  showView("viewMission");
+  startCountdown(MISSION_TIMEOUT_SEC);
+}
 
-  <!-- ✅ DATALIST GLOBAL (utilisé par Accueil + Accusation) -->
-  <datalist id="playersDatalist"></datalist>
-</body>
-</html>
+function renderMissionScreen() {
+  if ($("whoami")) $("whoami").textContent = session.player ? `Connecté : ${session.player.display}` : "";
+  if ($("missionText")) $("missionText").textContent = session.mission?.text || "—";
+  if ($("targetText")) $("targetText").textContent = session.target?.display || "—";
+
+  if ($("missionStatus")) {
+    $("missionStatus").textContent = session.missionDone
+      ? "Statut : mission déjà déclarée comme réalisée ✅"
+      : "Statut : mission non déclarée (pour l’instant).";
+  }
+
+  const isAdmin = session.player && session.player.display === ADMIN_NAME;
+  const adminBox = $("adminBox");
+  if (adminBox) adminBox.classList.toggle("hidden", !isAdmin);
+
+  if ($("adminPass")) $("adminPass").value = "";
+  if ($("adminStatus")) $("adminStatus").textContent = "";
+}
+
+/***********************
+ * MISSION DONE
+ ***********************/
+async function markMissionDone() {
+  clearAlert();
+  if (!session.player) {
+    showAlert("Session expirée. Reviens à l’accueil et reconnecte-toi.");
+    logoutToHome();
+    return;
+  }
+
+  if ($("missionStatus")) $("missionStatus").textContent = "Enregistrement…";
+
+  const resp = await apiPost("/api/mission_done", { player_id: session.player.id });
+  if (resp?.ok === false) {
+    showAlert(resp?.error || "Erreur lors de la validation.");
+    if ($("missionStatus")) $("missionStatus").textContent = "";
+    return;
+  }
+
+  session.missionDone = true;
+  renderMissionScreen();
+}
+
+/***********************
+ * GUESS FLOW
+ ***********************/
+function goToGuess() {
+  clearAlert();
+  if (!session.player) {
+    showAlert("Tu dois d’abord te connecter pour faire un guess.");
+    showView("viewHome");
+    return;
+  }
+  if ($("guessStatus")) $("guessStatus").textContent = "";
+  showView("viewGuess"); // stopCountdown auto via showView
+}
+
+async function submitGuess() {
+  clearAlert();
+  if (!session.player) {
+    showAlert("Session expirée. Reviens à l’accueil et reconnecte-toi.");
+    logoutToHome();
+    return;
+  }
+
+  const accused = resolvePlayerDisplay($("killerInput")?.value || "");
+  if (!accused) {
+    showAlert("Choisis un killer valide dans la liste déroulante.");
+    return;
+  }
+
+  const guessedMission = ($("guessMission")?.value || "").trim();
+  if (!guessedMission) {
+    showAlert("Décris la mission devinée.");
+    return;
+  }
+
+  if (accused.id === session.player.id) {
+    showAlert("Tu ne peux pas t’accuser toi-même 😉");
+    return;
+  }
+
+  if ($("guessStatus")) $("guessStatus").textContent = "Envoi du guess…";
+
+  const resp = await apiPost("/api/guess", {
+    player_id: session.player.id,
+    accused_killer_id: accused.id,
+    guessed_mission: guessedMission,
+  });
+
+  if (resp?.ok === false) {
+    if ($("guessStatus")) $("guessStatus").textContent = "";
+    showAlert(resp?.error || "Erreur lors de l’enregistrement du guess.");
+    return;
+  }
+
+  if ($("guessStatus")) $("guessStatus").textContent = "Guess enregistré ✅";
+}
+
+/***********************
+ * ADMIN (Lucas + password)
+ ***********************/
+async function unlockAdmin() {
+  clearAlert();
+  if (!session.player || session.player.display !== ADMIN_NAME) {
+    showAlert("Accès refusé.");
+    return;
+  }
+
+  const pass = ($("adminPass")?.value || "").trim();
+  if (pass !== ADMIN_PASSWORD) {
+    if ($("adminStatus")) $("adminStatus").textContent = "Mot de passe incorrect ❌";
+    return;
+  }
+
+  if ($("adminStatus")) $("adminStatus").textContent = "Accès autorisé ✅";
+  showView("viewAdmin"); // stopCountdown auto via showView
+  await refreshAdmin();
+}
+
+async function refreshAdmin() {
+  clearAlert();
+  const tbody = $("adminTbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="7" class="muted">Chargement…</td></tr>`;
+
+  const data = await apiGet("/api/leaderboard");
+  const rows = Array.isArray(data) ? data : [];
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">Aucune donnée.</td></tr>`;
+    return;
+  }
+
+  const yesNo = (b) => (b ? "Oui" : "Non");
+
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td>${escapeHtml(r.display ?? "—")}</td>
+      <td>${escapeHtml(String(r.points ?? 0))}</td>
+      <td>${escapeHtml(yesNo(!!r.mission_done))}</td>
+      <td>${escapeHtml(yesNo(!!r.discovered_by_target))}</td>
+      <td>${escapeHtml(yesNo(!!r.found_killer))}</td>
+      <td>${escapeHtml(r.guess_killer_display ?? "—")}</td>
+      <td>${escapeHtml(r.guess_mission ?? "—")}</td>
+    </tr>
+  `).join("");
+}
+
+async function resetStateFromAdmin() {
+  clearAlert();
+  const ok = confirm("⚠️ Reset état du jeu ? (missions_done/guesses/points seront remis à zéro)");
+  if (!ok) return;
+
+  try {
+    const resp = await apiPost("/api/admin/reset", { password: ADMIN_PASSWORD });
+    if (resp?.ok === false) {
+      showAlert(resp?.error || "Reset impossible.");
+      return;
+    }
+    showAlert("État reset ✅");
+    await refreshAdmin();
+  } catch (err) {
+    console.error(err);
+    showAlert("Erreur reset (API).");
+  }
+}
+
+/***********************
+ * WIRING
+ ***********************/
+function wireEvents() {
+  $("btnHomeHeader")?.addEventListener("click", logoutToHome);
+
+  $("formLogin")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await loginAndFetchMission($("inputName")?.value || "");
+    } catch (err) {
+      console.error(err);
+      showAlert("Impossible de joindre le serveur (API). Vérifie Render / CORS.");
+    }
+  });
+
+  $("btnMissionDone")?.addEventListener("click", async () => {
+    try { await markMissionDone(); }
+    catch (err) { console.error(err); showAlert("Erreur API."); }
+  });
+
+  $("btnGoGuessFromMission")?.addEventListener("click", () => {
+    try { goToGuess(); }
+    catch (err) { console.error(err); showAlert("Erreur."); }
+  });
+
+  $("btnHomeMission")?.addEventListener("click", logoutToHome);
+
+  $("btnAdminUnlock")?.addEventListener("click", async () => {
+    try { await unlockAdmin(); }
+    catch (err) { console.error(err); showAlert("Erreur admin / API."); }
+  });
+
+  $("btnHomeGuess")?.addEventListener("click", logoutToHome);
+
+  $("formGuess")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await submitGuess(); }
+    catch (err) { console.error(err); showAlert("Erreur API."); }
+  });
+
+  $("btnHomeAdmin")?.addEventListener("click", logoutToHome);
+
+  $("btnRefreshAdmin")?.addEventListener("click", async () => {
+    try { await refreshAdmin(); }
+    catch (err) { console.error(err); showAlert("Erreur API."); }
+  });
+
+  $("btnResetState")?.addEventListener("click", resetStateFromAdmin);
+
+  // BONUS: si tu veux éviter de te faire logout pendant que tu tapes le mdp admin sur l'écran mission
+  $("adminPass")?.addEventListener("focus", stopCountdown);
+  $("adminPass")?.addEventListener("input", stopCountdown);
+}
+
+/***********************
+ * INIT
+ ***********************/
+async function init() {
+  wireEvents();
+  showView("viewHome");
+
+  try {
+    await loadPlayers();
+  } catch (err) {
+    console.error(err);
+    showAlert("API inaccessible : impossible de charger la liste des joueurs.");
+  }
+}
+
+init();
